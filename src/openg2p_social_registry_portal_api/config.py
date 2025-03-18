@@ -25,5 +25,15 @@ class Settings(AuthSettings, Settings):
     openapi_version: str = __version__
     db_dbname: Optional[str] = "openg2pdb"
 
-    auth_api_get_group_by_partner_id: ApiAuthSettings = ApiAuthSettings(enabled=True)
-    auth_api_update_group_members: ApiAuthSettings = ApiAuthSettings(enabled=True)
+    auth_api_get_all_form: ApiAuthSettings = ApiAuthSettings(enabled=True)
+
+    auth_api_get_group_by_id: ApiAuthSettings = ApiAuthSettings(enabled=True)
+    auth_api_get_groups_by_partner_id: ApiAuthSettings = ApiAuthSettings(enabled=True)
+    auth_api_create_group: ApiAuthSettings = ApiAuthSettings(enabled=True)
+    auth_api_update_group_by_id: ApiAuthSettings = ApiAuthSettings(enabled=True)
+    auth_api_remove_group_by_id: ApiAuthSettings = ApiAuthSettings(enabled=True)
+
+    auth_api_get_individual_by_id: ApiAuthSettings = ApiAuthSettings(enabled=True)
+    auth_api_create_individual: ApiAuthSettings = ApiAuthSettings(enabled=True)
+    auth_api_update_individual_by_id: ApiAuthSettings = ApiAuthSettings(enabled=True)
+    auth_api_remove_individual_by_id: ApiAuthSettings = ApiAuthSettings(enabled=True)

@@ -1,32 +1,42 @@
+from datetime import date
 from typing import List, Optional
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class GroupMember(BaseModel):
     model_config = ConfigDict(from_attributes=True)
-    id: int
-    name: str
-    email: str
-    phone: str
-    birthdate: Optional[str] = None
-    gender: Optional[str] = None
-    company_id: int = 1
+    id: Optional[int]
+    name: Optional[str]
+    email: Optional[str]
+    phone: Optional[str]
+    birthdate: Optional[date]
+    gender: Optional[str]
+    company_id: Optional[int]
+    is_registrant: bool = True
+    is_group: bool = False
+
+
+class GroupRegId(BaseModel):
+    id_type: Optional[int]
+    name: Optional[str]
+    value: Optional[str]
+    expiry_date: Optional[date]
 
 
 class GroupDetail(BaseModel):
     model_config = ConfigDict(from_attributes=True)
-    id: Optional[int] = None
-    name: str
-    email: str
-    phone: str
-    kind: str
-    registration_date: str
-    address: str
-    members: List[GroupMember]
+    id: Optional[int]
+    name: Optional[str]
+    email: Optional[str]
+    phone: Optional[str]
+    registration_date: Optional[date]
+    address: Optional[str]
+    company_id: Optional[int] = Field(default=1)
+    is_registrant: bool = True
+    is_group: bool = True
+    members: Optional[List[GroupMember]] = Field(default_factory=list)
+    reg_ids: Optional[List[GroupRegId]] = Field(default_factory=list)
+    membership_kinds: Optional[List[str]] = []
 
 
-class GroupUpdate(BaseModel):
-    model_config = ConfigDict(from_attributes=True)
-    members: List[GroupMember]
-    removed_members: List[int] = []  # Add a field for removed members

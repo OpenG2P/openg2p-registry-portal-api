@@ -1,13 +1,12 @@
 # Import the base class
 from openg2p_fastapi_common.context import dbengine
-from openg2p_portal_api_common.models.orm.partner_orm import (
-    PartnerORM,
-)
 from openg2p_portal_api_common.services.partner_service import PartnerService
 from sqlalchemy import (
     text,
 )
 from sqlalchemy.ext.asyncio import async_sessionmaker
+
+from ..models.orm.partner_orm import PartnerORM
 
 
 class SocialRegistryPartnerService(PartnerService):

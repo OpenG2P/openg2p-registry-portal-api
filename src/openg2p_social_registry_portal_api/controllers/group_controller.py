@@ -1,34 +1,52 @@
-from typing import Annotated
+from typing import Annotated, List, Optional
 
-from fastapi import Depends
-from openg2p_fastapi_auth.controllers.auth_controller import AuthController
+from fastapi import Body, Depends
 from openg2p_fastapi_common.errors.http_exceptions import UnauthorizedError
+from openg2p_portal_api_common.controllers.auth_controller import AuthController
 from openg2p_portal_api_common.dependencies import JwtBearerAuth
 from openg2p_portal_api_common.models.credentials import AuthCredentials
 
-from ..models.group import GroupDetail, GroupUpdate
+from ..models.group import GroupDetail
 from ..services.group_services import GroupService
 
 
-# _logger = logging.getLogger(__name__)
 class GroupController(AuthController):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
         self._group_service = GroupService.get_component()
 
-        # self.router = APIRouter(tags=["group"])
-        # self._group_service = GroupService.get_component()  # Get group service
+        self.router.prefix = "/portal"
+        self.router.tags = ["portal"]
 
         self.router.add_api_route(
-            "/group/{partner_id}",
-            self.get_group_by_partner_id,
+            "/group",
+            self.create_group,
+            responses={200: {"model": GroupDetail}},
+            methods=["POST"],
+        )
+        self.router.add_api_route(
+            "/groups/{id}",
+            self.get_groups_by_partner_id,
+            responses={200: {"model": List[GroupDetail]}},
+            methods=["GET"],
+        )
+        self.router.add_api_route(
+            "/group/{id}",
+            self.get_group_by_id,
             responses={200: {"model": GroupDetail}},
             methods=["GET"],
         )
         self.router.add_api_route(
-            "/group/{group_id}",
-            self.update_group_members,
+            "/group/{id}",
+            self.update_group_by_id,
+            responses={200: {"model": GroupDetail}},
             methods=["PUT"],
+        )
+        self.router.add_api_route(
+            "/group/{id}",
+            self.remove_group_by_id,
+            responses={204: {"description": "Group deleted successfully"}},
+            methods=["DELETE"],
         )
 
     @property
@@ -37,59 +55,53 @@ class GroupController(AuthController):
             self._group_service = GroupService.get_component()
         return self._group_service
 
-    async def get_group_by_partner_id(
+    async def get_groups_by_partner_id(
         self,
-        partner_id: int,
+        id: int,
         auth: Annotated[AuthCredentials, Depends(JwtBearerAuth())],
-    ):
-        """
-        Get the group details of the partner.
-
-        Args:
-
-            partner_id (int): The partner ID.
-
-            auth (AuthCredentials): Authentication credentials, obtained via JWT Bearer Auth.
-
-        Returns:
-
-            GroupDetail: The group details of the partner.
-        """
+    ) -> List[GroupDetail]:
         if not auth.partner_id:
-            raise UnauthorizedError(
-                message="Unauthorized. Partner Not Found in Registry."
-            )
+            raise UnauthorizedError("Unauthorized. Partner Not Found in Registry.")
 
-        group_details = await self.group_service.get_group_details_by_partner_id(
-            partner_id
-        )
-        return group_details
+        return await self.group_service.get_groups_by_partner_id(partner_id=id)
 
-    async def update_group_members(
+    async def get_group_by_id(
         self,
-        group_id: int,
-        group_update: GroupUpdate,
+        id: int,
         auth: Annotated[AuthCredentials, Depends(JwtBearerAuth())],
-    ):
-        """
-        Update the group members.
-
-        Args:
-
-            group_id (int): The group ID.
-
-            group_update (GroupUpdate): The new group members.
-
-            auth (AuthCredentials): Authentication credentials, obtained via JWT Bearer Auth.
-
-        Returns:
-
-            str: A message indicating the success of the update.
-        """
+    ) -> GroupDetail:
         if not auth.partner_id:
-            raise UnauthorizedError(
-                message="Unauthorized. Partner Not Found in Registry."
-            )
-        await self.group_service.update_group_members(group_id, group_update)
+            raise UnauthorizedError("Unauthorized. Partner Not Found in Registry.")
 
-        return "Group members updated successfully!"
+        group = await self.group_service.get_group_by_id(group_id=id)
+        return group
+
+    async def update_group_by_id(
+        self,
+        id: int,
+        auth: Annotated[AuthCredentials, Depends(JwtBearerAuth())],
+        updated_group_details: Optional[GroupDetail] = Body(...),
+    )-> Optional[GroupDetail]:
+        if not auth.partner_id:
+            raise UnauthorizedError("Unauthorized. Partner Not Found in Registry.")
+        return await self.group_service.update_group(updated_group_details, group_id=id)
+
+    async def create_group(
+        self,
+        group_details: GroupDetail,
+        auth: Annotated[AuthCredentials, Depends(JwtBearerAuth())],
+    ) -> GroupDetail:
+        if not auth.partner_id:
+            raise UnauthorizedError("Unauthorized. Partner Not Found in Registry.")
+
+        return await self.group_service.create_group(group_details)
+
+    async def remove_group_by_id(
+        self,
+        id: int,
+        auth: Annotated[AuthCredentials, Depends(JwtBearerAuth())],
+    ) -> dict:
+        if not auth.partner_id:
+            raise UnauthorizedError("Unauthorized. Partner Not Found in Registry.")
+
+        return await self.group_service.remove_group_by_id(id)
