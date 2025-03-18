@@ -1,9 +1,11 @@
-from typing import List, Optional
 from datetime import date, datetime
-from pydantic import BaseModel, Field, ConfigDict
+from typing import Optional
+
+from pydantic import BaseModel, ConfigDict
+
 
 class IndividualDetails(BaseModel):
-    model_config = ConfigDict(from_attributes=True) 
+    model_config = ConfigDict(from_attributes=True)
     family_name: Optional[str] = None
     given_name: Optional[str] = None
     email: Optional[str] = None
@@ -14,7 +16,7 @@ class IndividualDetails(BaseModel):
     phone: Optional[str] = None
     company_id: Optional[int] = None
     registration_date: Optional[date] = date.today
-    create_date: Optional[date] =datetime.utcnow
+    create_date: Optional[date] = datetime.utcnow
     write_date: datetime = datetime.utcnow
     is_registrant: bool = True
     is_group: bool = False

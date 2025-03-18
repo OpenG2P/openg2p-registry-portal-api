@@ -15,6 +15,7 @@ class GroupMember(BaseModel):
     company_id: Optional[int]
     is_registrant: bool = True
     is_group: bool = False
+    membership_kinds: Optional[List[str]] = Field(default_factory=list)
 
 
 class GroupRegId(BaseModel):
@@ -37,6 +38,3 @@ class GroupDetail(BaseModel):
     is_group: bool = True
     members: Optional[List[GroupMember]] = Field(default_factory=list)
     reg_ids: Optional[List[GroupRegId]] = Field(default_factory=list)
-    membership_kinds: Optional[List[str]] = []
-
-

@@ -81,7 +81,7 @@ class GroupController(AuthController):
         id: int,
         auth: Annotated[AuthCredentials, Depends(JwtBearerAuth())],
         updated_group_details: Optional[GroupDetail] = Body(...),
-    )-> Optional[GroupDetail]:
+    ) -> Optional[GroupDetail]:
         if not auth.partner_id:
             raise UnauthorizedError("Unauthorized. Partner Not Found in Registry.")
         return await self.group_service.update_group(updated_group_details, group_id=id)

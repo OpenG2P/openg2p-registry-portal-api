@@ -17,7 +17,6 @@ class GroupService(BaseService):
         super().__init__(**kwargs)
         self.async_session_maker = async_sessionmaker(dbengine.get())
 
-
     async def create_group(self, group_details: GroupDetail) -> GroupDetail:
         async with self.async_session_maker() as session:
             new_group = SRPartnerORM(
@@ -30,19 +29,45 @@ class GroupService(BaseService):
                 is_group=group_details.is_group,
             )
             session.add(new_group)
-            # Ensure the ID is generated before committing
             await session.flush()
 
-            # Add members to the group
+            # Dict to track membership records per individual
+            membership_map = {}
+
+            # Add members and their membership kinds
             if group_details.members:
                 for member in group_details.members:
                     member_record = await session.get(SRPartnerORM, member.id)
                     if member_record:
-                        session.add(
-                            G2PGroupMembershipORM(
-                                group=new_group.id, individual=member_record.id
+                        membership = G2PGroupMembershipORM(
+                            group=new_group.id, individual=member_record.id
+                        )
+                        session.add(membership)
+                        await session.flush()
+
+                        # Store membership for later use
+                        membership_map[member_record.id] = membership
+
+            # Add membership kinds for members
+            if group_details.members:
+                for member in group_details.members:
+                    if member.id in membership_map and member.membership_kinds:
+                        kind_records = await session.execute(
+                            select(G2PGroupMembershipKindORM).where(
+                                G2PGroupMembershipKindORM.name.in_(
+                                    member.membership_kinds
+                                )
                             )
                         )
+                        kind_objects = kind_records.scalars().all()
+                        if kind_objects:
+                            membership = membership_map[member.id]
+                            # Use session.sync_mode() to update relationship
+                            await session.run_sync(
+                                lambda s, m=membership, k=kind_objects: m.group_membership_kind.extend(
+                                    k
+                                )
+                            )
 
             # Add registration IDs to the group
             if group_details.reg_ids:
@@ -64,7 +89,6 @@ class GroupService(BaseService):
         self, partner_id: int
     ) -> Optional[List[GroupDetail]]:
         async with self.async_session_maker() as session:
-
             partner = await session.get(SRPartnerORM, partner_id)
             if not partner:
                 return None
@@ -95,21 +119,10 @@ class GroupService(BaseService):
             reg_ids = await self.get_group_reg_ids(group_id, session)
 
             # Fetch membership kinds for each member
-            # for member in members:
-            #     membership_record = await session.execute(
-            #         select(G2PGroupMembershipORM).where(
-            #             G2PGroupMembershipORM.individual == member.id
-            #         )
-            #     )
-            #     membership = membership_record.scalars().first()
-
-            #     if membership:
-            #         kind_records = await session.execute(
-            #             select(G2PGroupMembershipKindORM).where(
-            #                 G2PGroupMembershipKindORM.id.in_([kind.id for kind in membership.group_membership_kind])
-            #             )
-            #         )
-            #         member.membership_kinds = kind_records.scalars().all()
+            for member in members:
+                member.membership_kinds = await self.get_member_membership_kinds(
+                    member.id
+                )
 
             return GroupDetail(
                 id=group.id,
@@ -124,32 +137,73 @@ class GroupService(BaseService):
                 reg_ids=reg_ids,
             )
 
-    async def update_group(self, update_details: GroupDetail, group_id: int)-> Optional[GroupDetail]:
+    async def update_group(
+        self, update_details: GroupDetail, group_id: int
+    ) -> Optional[GroupDetail]:
         async with self.async_session_maker() as session:
             group = await session.get(SRPartnerORM, group_id)
             if not group:
                 raise ValueError(f"Group with ID {group_id} not found.")
 
             # Update group fields
-            for field in ["name", "email", "phone", "registration_date", "address", "is_group"]:
+            for field in [
+                "name",
+                "email",
+                "phone",
+                "registration_date",
+                "address",
+                "is_group",
+            ]:
                 setattr(group, field, getattr(update_details, field))
 
-
             # Remove and update members
-            await session.execute(delete(G2PGroupMembershipORM).where(G2PGroupMembershipORM.group == group_id))
+            await session.execute(
+                delete(G2PGroupMembershipORM).where(
+                    G2PGroupMembershipORM.group == group_id
+                )
+            )
             if update_details.members:
-                session.add_all([
-                    G2PGroupMembershipORM(group=group.id, individual=member.id)
-                    for member in update_details.members
-                ])
+                for member in update_details.members:
+                    membership_entry = G2PGroupMembershipORM(
+                        group=group.id, individual=member.id
+                    )
+                    session.add(membership_entry)
+
+                    # Handle membership kinds
+                    if hasattr(member, "membership_kinds") and member.membership_kinds:
+                        kind_records = await session.execute(
+                            select(G2PGroupMembershipKindORM).where(
+                                G2PGroupMembershipKindORM.name.in_(
+                                    member.membership_kinds
+                                )
+                            )
+                        )
+                        kind_objects = list(kind_records.scalars())
+
+                        # Use session.sync_mode() to update relationship safely
+                        await session.flush()
+                        await session.run_sync(
+                            lambda s, m=membership_entry, k=kind_objects: m.group_membership_kind.extend(
+                                k
+                            )
+                        )
 
             # Remove and update registration IDs
-            await session.execute(delete(RegIDORM).where(RegIDORM.partner_id == group_id))
+            await session.execute(
+                delete(RegIDORM).where(RegIDORM.partner_id == group_id)
+            )
             if update_details.reg_ids:
-                session.add_all([
-                    RegIDORM(partner_id=group.id, id_type=reg_id.id_type, value=reg_id.value, expiry_date=reg_id.expiry_date)
-                    for reg_id in update_details.reg_ids
-                ])
+                session.add_all(
+                    [
+                        RegIDORM(
+                            partner_id=group.id,
+                            id_type=reg_id.id_type,
+                            value=reg_id.value,
+                            expiry_date=reg_id.expiry_date,
+                        )
+                        for reg_id in update_details.reg_ids
+                    ]
+                )
 
             await session.commit()
             await session.refresh(group)
@@ -158,14 +212,25 @@ class GroupService(BaseService):
 
     async def remove_group_by_id(self, group_id: int) -> dict:
         async with self.async_session_maker() as session:
-
             group = await session.get(SRPartnerORM, group_id)
             if not group:
                 raise ValueError(f"Group with ID {group_id} not found.")
 
+            # Unlink membership kinds before removing group memberships
+            await session.execute(
+                delete(G2PGroupMembershipKindORM).where(
+                    G2PGroupMembershipKindORM.id.in_(
+                        select(G2PGroupMembershipORM.id).where(
+                            G2PGroupMembershipORM.group == group_id
+                        )
+                    )
+                )
+            )
             # Unlink the members from the group
             await session.execute(
-                delete(G2PGroupMembershipORM).where(G2PGroupMembershipORM.group == group_id)
+                delete(G2PGroupMembershipORM).where(
+                    G2PGroupMembershipORM.group == group_id
+                )
             )
 
             # Unlink the registration IDs from the group
@@ -176,10 +241,7 @@ class GroupService(BaseService):
             await session.delete(group)
             await session.commit()
 
-            return {
-                "message":  f"Group with ID {group_id} removed successfully."
-            }
-
+            return {"message": f"Group with ID {group_id} removed successfully."}
 
     async def get_group_members(self, group_id: int, session) -> List[GroupMember]:
         group_members = []
@@ -205,6 +267,35 @@ class GroupService(BaseService):
                 )
         return group_members
 
+    async def get_member_membership_kinds(self, member_id: int) -> list[str]:
+        async with self.async_session_maker() as session:
+            membership_record = await session.execute(
+                select(G2PGroupMembershipORM).where(
+                    G2PGroupMembershipORM.individual == member_id
+                )
+            )
+            membership = membership_record.scalars().first()
+
+            membership_kinds = []
+            if membership:
+                # Ensure group_membership_kind is loaded
+                await session.refresh(membership, ["group_membership_kind"])
+
+                if membership.group_membership_kind:
+                    kind_ids = [kind.id for kind in membership.group_membership_kind]
+
+                    if kind_ids:
+                        kind_records = await session.execute(
+                            select(G2PGroupMembershipKindORM).where(
+                                G2PGroupMembershipKindORM.id.in_(kind_ids)
+                            )
+                        )
+                        membership_kinds = [
+                            kind.name for kind in kind_records.scalars()
+                        ]
+
+            return membership_kinds
+
     async def get_group_reg_ids(self, group_id: int, session) -> List[GroupRegId]:
         reg_ids = []
         reg_id_records = await session.execute(
@@ -224,6 +315,3 @@ class GroupService(BaseService):
                 )
             )
         return reg_ids
-
-
-

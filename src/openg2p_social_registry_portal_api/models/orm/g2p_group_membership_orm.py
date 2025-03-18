@@ -8,9 +8,18 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 g2p_group_membership_g2p_group_membership_kind_rel = Table(
     "g2p_group_membership_g2p_group_membership_kind_rel",
     BaseORMModel.metadata,
-    Column("g2p_group_membership_id", ForeignKey("g2p_group_membership.id"), primary_key=True),
-    Column("g2p_group_membership_kind_id", ForeignKey("g2p_group_membership_kind.id"), primary_key=True),
+    Column(
+        "g2p_group_membership_id",
+        ForeignKey("g2p_group_membership.id"),
+        primary_key=True,
+    ),
+    Column(
+        "g2p_group_membership_kind_id",
+        ForeignKey("g2p_group_membership_kind.id"),
+        primary_key=True,
+    ),
 )
+
 
 class G2PGroupMembershipORM(BaseORMModel):
     __tablename__ = "g2p_group_membership"

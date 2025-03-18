@@ -1,7 +1,9 @@
 from openg2p_fastapi_common.models import BaseORMModel
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
-from ..orm.g2p_group_membership_orm import g2p_group_membership_g2p_group_membership_kind_rel
+from ..orm.g2p_group_membership_orm import (
+    g2p_group_membership_g2p_group_membership_kind_rel,
+)
 
 
 class G2PGroupMembershipKindORM(BaseORMModel):

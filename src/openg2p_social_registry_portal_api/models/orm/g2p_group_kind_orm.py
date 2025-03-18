@@ -1,7 +1,5 @@
-from typing import List
-
 from openg2p_fastapi_common.models import BaseORMModel
-from sqlalchemy.orm import Mapped, mapped_column, relationship
+from sqlalchemy.orm import Mapped, mapped_column
 
 # from ..orm.partner_orm import SRPartnerORM
 
