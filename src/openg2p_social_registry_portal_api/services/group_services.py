@@ -7,6 +7,7 @@ from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import async_sessionmaker
 
 from ..models.group import GroupDetail, GroupMember, GroupRegId
+from ..models.orm.g2p_group_kind_orm import G2PGroupKindORM
 from ..models.orm.g2p_group_membership_kind_orm import G2PGroupMembershipKindORM
 from ..models.orm.g2p_group_membership_orm import G2PGroupMembershipORM
 from ..models.orm.partner_orm import SRPartnerORM
@@ -25,6 +26,7 @@ class GroupService(BaseService):
                 phone=group_details.phone,
                 registration_date=group_details.registration_date,
                 address=group_details.address,
+                kind=group_details.kind,
                 company_id=group_details.company_id,
                 is_group=group_details.is_group,
             )
@@ -117,6 +119,7 @@ class GroupService(BaseService):
 
             members = await self.get_group_members(group_id, session)
             reg_ids = await self.get_group_reg_ids(group_id, session)
+            group_kind = await G2PGroupKindORM.get_group_kind_name(group.kind)
 
             # Fetch membership kinds for each member
             for member in members:
@@ -131,6 +134,8 @@ class GroupService(BaseService):
                 phone=group.phone,
                 registration_date=group.registration_date,
                 address=group.address,
+                kind=group.kind,
+                group_kind=group_kind,
                 is_registrant=group.is_registrant,
                 is_group=group.is_group,
                 members=members,
@@ -152,6 +157,7 @@ class GroupService(BaseService):
                 "phone",
                 "registration_date",
                 "address",
+                "kind",
                 "is_group",
             ]:
                 setattr(group, field, getattr(update_details, field))

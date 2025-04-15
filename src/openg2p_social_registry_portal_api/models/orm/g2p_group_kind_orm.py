@@ -1,7 +1,7 @@
+from openg2p_fastapi_common.context import dbengine
 from openg2p_fastapi_common.models import BaseORMModel
-from sqlalchemy.orm import Mapped, mapped_column
-
-# from ..orm.partner_orm import SRPartnerORM
+from sqlalchemy.ext.asyncio import async_sessionmaker
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 
 class G2PGroupKindORM(BaseORMModel):
@@ -9,5 +9,11 @@ class G2PGroupKindORM(BaseORMModel):
     id: Mapped[int] = mapped_column(primary_key=True)
     name: Mapped[str] = mapped_column()
 
-    # One-to-Many Relationship: A kind has multiple partners
-    # partners = relationship("SRPartnerORM", back_populates="group_kind")
+    partners = relationship("SRPartnerORM", back_populates="group_kind")
+
+    @classmethod
+    async def get_group_kind_name(cls, kind_id: int):
+        async_session_maker = async_sessionmaker(dbengine.get())
+        async with async_session_maker() as session:
+            group_kind_record = await session.get(cls, kind_id)
+            return group_kind_record.name if group_kind_record else None

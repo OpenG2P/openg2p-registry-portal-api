@@ -1,7 +1,10 @@
-from datetime import date, datetime
-from typing import Optional
 
-from pydantic import BaseModel, ConfigDict
+from datetime import date, datetime
+from typing import List, Optional
+
+from pydantic import BaseModel, ConfigDict, Field
+
+from ..models.group import GroupRegId
 
 
 class IndividualDetails(BaseModel):
@@ -20,3 +23,4 @@ class IndividualDetails(BaseModel):
     write_date: datetime = datetime.utcnow
     is_registrant: bool = True
     is_group: bool = False
+    reg_ids: Optional[List[GroupRegId]] = Field(default_factory=list)

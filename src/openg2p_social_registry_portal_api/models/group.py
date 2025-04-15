@@ -34,6 +34,8 @@ class GroupDetail(BaseModel):
     registration_date: Optional[date]
     address: Optional[str]
     company_id: Optional[int] = Field(default=1)
+    kind: Optional[int]
+    group_kind: Optional[str]
     is_registrant: bool = True
     is_group: bool = True
     members: Optional[List[GroupMember]] = Field(default_factory=list)
