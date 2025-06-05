@@ -1,0 +1,255 @@
+from datetime import date
+from typing import List, Optional
+
+from fastapi.responses import JSONResponse
+from openg2p_fastapi_common.context import dbengine
+from openg2p_fastapi_common.service import BaseService
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import async_sessionmaker
+
+from ..models.group import GroupDetails, GroupMember, GroupRegId
+from ..models.orm.draft_g2p_group_kind_orm import DraftG2PGroupKindORM
+from ..models.orm.draft_g2p_group_membership_kind_orm import (
+    DraftG2PGroupMembershipKindORM,
+)
+from ..models.orm.draft_g2p_group_membership_orm import DraftG2PGroupMembershipORM
+from ..models.orm.draft_partner_orm import DraftPartnerORM
+from ..models.orm.draft_reg_id_orm import DraftRegIDORM, DraftRegIDTypeORM
+
+
+class DraftGroupService(BaseService):
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self.async_session_maker = async_sessionmaker(dbengine.get())
+
+    async def create_group(self, group_details: GroupDetails) -> GroupDetails:
+        async with self.async_session_maker() as session:
+            # group_kind means the type of group, e.g., family, household, etc.
+            group_kind_id = await DraftG2PGroupKindORM.get_group_kind_id_by_name(
+                group_details.group_kind
+            )
+            new_group = DraftPartnerORM(
+                name=group_details.name,
+                email=group_details.email,
+                phone=group_details.phone,
+                address=group_details.address,
+                kind=group_kind_id,
+                company_id=1,
+                is_registrant=True,
+                is_group=True,
+                registration_date=date.today(),
+            )
+            session.add(new_group)
+            await session.flush()
+
+            # Add registration IDs to the group
+            if group_details.reg_ids:
+                for reg_id in group_details.reg_ids:
+                    session.add(
+                        DraftRegIDORM(
+                            partner_id=new_group.id,
+                            id_type=reg_id.id_type,
+                            value=reg_id.value,
+                            expiry_date=reg_id.expiry_date,
+                        )
+                    )
+            await session.commit()
+            await session.refresh(new_group)
+
+        return await self.get_group_by_id(new_group.id)
+
+    async def get_group_by_id(self, group_id: int) -> Optional[GroupDetails]:
+        async with self.async_session_maker() as session:
+            group = await session.get(DraftPartnerORM, group_id)
+            if not group:
+                return None
+
+            reg_ids = await self.get_group_reg_ids(group_id, session)
+            group_kind = await DraftG2PGroupKindORM.get_group_kind_name(group.kind)
+            return GroupDetails(
+                name=group.name,
+                email=group.email,
+                phone=group.phone,
+                address=group.address,
+                group_kind=group_kind,
+                registration_date=group.registration_date,
+                reg_ids=reg_ids,
+            )
+
+    async def add_member_to_group(self, group_id: int, member: GroupMember):
+        async with self.async_session_maker() as session:
+            group = await session.get(DraftPartnerORM, group_id)
+            if not group:
+                return None
+
+            existing_members = await self.get_group_members(group_id, session)
+
+            # Pre-check: does the new member request "head" membership?
+            check_head_conflict = (
+                member.membership_kinds and "Head" in member.membership_kinds
+            )
+
+            for existing_member in existing_members:
+                if existing_member.name == member.name:
+                    return JSONResponse(
+                        status_code=400,
+                        content={
+                            "success": False,
+                            "message": [
+                                "A member with this name already exists in the group."
+                            ],
+                        },
+                    )
+
+                if check_head_conflict:
+                    existing_kinds = await self.get_member_membership_kinds(
+                        existing_member.id
+                    )
+
+                    if "Head" in existing_kinds:
+                        return JSONResponse(
+                            status_code=400,
+                            content={
+                                "success": False,
+                                "message": [
+                                    "Head role is already assigned to another member."
+                                    "Please remove the"
+                                    "'head' role from the existing member"
+                                    "before assigning it to a new member."
+                                ],
+                            },
+                        )
+            # Extract given,addl and family name
+            name = member.name.split()
+
+            given_name = None
+            addl_name = None
+            family_name = None
+
+            if len(name) == 1:
+                given_name = name[0]
+            elif len(name) == 2:
+                given_name = name[0]
+                family_name = name[1]
+            elif len(name) >= 3:
+                given_name = name[0]
+                addl_name = " ".join(name[1:-1])
+                family_name = name[-1]
+
+            new_member = DraftPartnerORM(
+                name=member.name,
+                given_name=given_name,
+                addl_name=addl_name,
+                family_name=family_name,
+                email=member.email,
+                phone=member.phone,
+                birthdate=member.birthdate,
+                birth_place=member.birth_place,
+                gender=member.gender,
+                company_id=1,
+                is_registrant=True,
+                is_group=False,
+                registration_date=date.today(),
+            )
+            session.add(new_member)
+            await session.flush()
+
+            # Create a group membership record linking the new member to the group.
+            group_membership = DraftG2PGroupMembershipORM(
+                group=group.id,
+                individual=new_member.id,
+            )
+            session.add(group_membership)
+            await session.flush()
+
+            # Add membership kinds for this member
+            if member.membership_kinds:
+                kind_records = await session.execute(
+                    select(DraftG2PGroupMembershipKindORM).where(
+                        DraftG2PGroupMembershipKindORM.name.in_(member.membership_kinds)
+                    )
+                )
+                kind_objects = kind_records.scalars().all()
+                if kind_objects:
+                    await session.run_sync(
+                        lambda session: (
+                            group_membership.group_membership_kind.extend(kind_objects)
+                        )
+                    )
+            await session.commit()
+            await session.refresh(new_member)
+
+            return GroupMember(
+                name=new_member.name,
+                email=new_member.email,
+                phone=new_member.phone,
+                birthdate=new_member.birthdate,
+                birth_place = new_member.birth_place,
+                gender=new_member.gender,
+                membership_kinds=await self.get_member_membership_kinds(new_member.id),
+            )
+
+    async def get_group_reg_ids(self, group_id: int, session) -> List[GroupRegId]:
+        reg_ids = []
+        reg_id_records = await session.execute(
+            select(DraftRegIDORM).where(DraftRegIDORM.partner_id == group_id)
+        )
+        reg_id_records = reg_id_records.scalars().all()
+
+        for record in reg_id_records:
+            id_type_name = await DraftRegIDTypeORM.get_id_type_name(record.id_type)
+
+            reg_ids.append(
+                GroupRegId(
+                    id_type=record.id_type,
+                    name=id_type_name.name,
+                    value=record.value,
+                    expiry_date=record.expiry_date,
+                )
+            )
+        return reg_ids
+
+    async def get_group_members(self, group_id: int, session) -> List[GroupMember]:
+        group_members = []
+        group_membership_records = await session.execute(
+            select(DraftG2PGroupMembershipORM).where(
+                DraftG2PGroupMembershipORM.group == group_id
+            )
+        )
+        group_membership_records = group_membership_records.scalars().all()
+        for membership in group_membership_records:
+            individual_record = await session.get(
+                DraftPartnerORM, membership.individual
+            )
+            if individual_record:
+                group_members.append(individual_record)
+        return group_members
+
+    async def get_member_membership_kinds(self, member_id: int) -> list[str]:
+        async with self.async_session_maker() as session:
+            membership_record = await session.execute(
+                select(DraftG2PGroupMembershipORM).where(
+                    DraftG2PGroupMembershipORM.individual == member_id
+                )
+            )
+            membership = membership_record.scalars().first()
+
+            membership_kinds = []
+            if membership:
+                # Ensure group_membership_kind is loaded
+                await session.refresh(membership, ["group_membership_kind"])
+
+                if membership.group_membership_kind:
+                    kind_ids = [kind.id for kind in membership.group_membership_kind]
+
+                    if kind_ids:
+                        kind_records = await session.execute(
+                            select(DraftG2PGroupMembershipKindORM).where(
+                                DraftG2PGroupMembershipKindORM.id.in_(kind_ids)
+                            )
+                        )
+                        membership_kinds = [
+                            kind.name for kind in kind_records.scalars()
+                        ]
+
+            return membership_kinds
