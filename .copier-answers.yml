@@ -10,6 +10,6 @@ github_ci_tests_codecov: true
 module_name: openg2p_social_registry_portal_api
 org_name: OpenG2P
 org_slug: OpenG2P
-package_name: openg2p-social-registry-portal-api
+package_name: openg2p-registry-portal-api
 repo_name: ''
-repo_slug: openg2p-social-registry-portal-api
+repo_slug: openg2p-registry-portal-api
